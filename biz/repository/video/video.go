@@ -39,11 +39,38 @@ func (r *VideoRepo) GetVideosByUserID(ctx context.Context, userID int64) ([]*mod
 
 func (r *VideoRepo) GetVideosByKeywords(ctx context.Context, keywords []string) ([]*model.Video, error) {
 	var videos []*model.Video
-	kw:= make([]string, 0, len(keywords))
+	kw := make([]string, 0, len(keywords))
 	for _, keyword := range keywords {
-		kw = append(kw, "%" + keyword + "%")
+		kw = append(kw, "%"+keyword+"%")
 	}
 	err := r.db.WithContext(ctx).Model(&model.Video{}).Where("description ILIKE ANY (array[?]) OR title ILIKE ANY (array[?])", kw, kw).Find(&videos).Error
+	if err != nil {
+		return nil, err
+	}
+	return videos, err
+}
+
+func (r *VideoRepo) GetVideosByVisitCount(ctx context.Context, limit int) ([]*model.Video, error) {
+	var videos []*model.Video
+	err := r.db.WithContext(ctx).Model(&model.Video{}).Order("visit_count DESC").Limit(limit).Find(&videos).Error
+	if err != nil {
+		return nil, err
+	}
+	return videos, err
+}
+
+func (r *VideoRepo) GetVideosByLikeCount(ctx context.Context, limit int) ([]*model.Video, error) {
+	var videos []*model.Video
+	err := r.db.WithContext(ctx).Model(&model.Video{}).Order("like_count DESC").Limit(limit).Find(&videos).Error
+	if err != nil {
+		return nil, err
+	}
+	return videos, err
+}
+
+func (r *VideoRepo) GetVideosByCommentCount(ctx context.Context, limit int) ([]*model.Video, error) {
+	var videos []*model.Video
+	err := r.db.WithContext(ctx).Model(&model.Video{}).Order("comment_count DESC").Limit(limit).Find(&videos).Error
 	if err != nil {
 		return nil, err
 	}

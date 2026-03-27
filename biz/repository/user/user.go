@@ -32,3 +32,11 @@ func (r *UserRepo) UpdateUserAvatar(ctx context.Context, avatarurl string) error
 	return r.db.WithContext(ctx).Model(&model.User{}).Select("avatar_url").Updates(map[string]string{"avatar_url": avatarurl}).Error
 }
 
+func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
+	var user model.User
+	err := r.db.WithContext(ctx).Model(&model.User{}).Where("username = ?", username).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, err
+}
