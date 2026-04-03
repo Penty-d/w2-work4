@@ -10,10 +10,6 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-const (
-	HotVideosKey = "hot_videos:"
-)
-
 type VideoSvc struct {
 	videoRepo *video.VideoRepo
 	rdb       *redis.Client

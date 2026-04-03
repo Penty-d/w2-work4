@@ -3,8 +3,9 @@ package video
 import (
 	"context"
 	"strconv"
+	"time"
 	model "w2-work4/biz/model/db"
-	kws "w2-work4/internal/utils/keywords"
+	kw "w2-work4/internal/utils/keywords"
 
 	"github.com/go-redis/redis/v8"
 
@@ -97,20 +98,81 @@ type VideoCacheRepo struct {
 const (
 	VideoLikeCountKeyPrefix  = "video_like_count:"
 	VideoVisitCountKeyPrefix = "video_visit_count:"
+	SearchResultsKeyPrefix   = "search_results:"
+	SearchKeywordsKeyPrefix  = "search_keywords:"
+	HotVideosKey             = "hot_videos"
 )
 
 func NewVideoCacheRepo(rdb *redis.Client) *VideoCacheRepo {
 	return &VideoCacheRepo{rdb: rdb}
 }
 
-func (r *VideoCacheRepo) GetVideosByKeywords(ctx context.Context, keywords []string) ([]int64, error) {
-	kw := kws.FormatKeywords(keywords)
-	ids, err := r.rdb.SMembers(ctx, "keyword:"+kw).Result()
+func (r *VideoCacheRepo) GetSearchResults(ctx context.Context, keywords []string) ([]int64, error) {
+	kws := kw.FormatKeywords(keywords)
+	ids, err := r.rdb.SMembers(ctx, SearchResultsKeyPrefix+kws).Result()
 	if err != nil {
 		return nil, err
 	}
 	var videoIDs []int64
+	for _, id := range ids {
+		videoID, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		videoIDs = append(videoIDs, videoID)
+	}
+	return videoIDs, nil
 }
+
+func (r *VideoCacheRepo) CacheSearchResults(ctx context.Context, keywords []string, videoIDs []int64) error {
+	kws := kw.FormatKeywords(keywords)
+	members := make([]any, 0, len(videoIDs))
+	for _, videoID := range videoIDs {
+		members = append(members, videoID)
+	}
+	return r.rdb.SAdd(ctx, SearchResultsKeyPrefix+kws, members...).Err()
+}
+
+func (r *VideoCacheRepo) CacheHotVideos(ctx context.Context, videoIDs []int64) error {
+	members := make([]any, 0, len(videoIDs))
+	for _, videoID := range videoIDs {
+		members = append(members, videoID)
+	}
+	return r.rdb.SAdd(ctx, HotVideosKey, members...).Err()
+}
+
+func (r *VideoCacheRepo) IncreaseSearchCount(ctx context.Context, keywords []string) error {
+	kws := kw.FormatKeywords(keywords)
+	return r.rdb.ZIncrBy(ctx, SearchKeywordsKeyPrefix+time.Now().Format("2006-01-02"), 1, kws).Err()
+}
+
+func (r *VideoCacheRepo) DeleteSearchCount(ctx context.Context, day time.Time) error {
+	key := SearchKeywordsKeyPrefix + day.Format("2006-01-02")
+	return r.rdb.Del(ctx, key).Err()
+}
+
+func (r *VideoCacheRepo) DeleteHotVideosCache(ctx context.Context) error {
+	return r.rdb.Del(ctx, HotVideosKey).Err()
+}
+
+func (r *VideoCacheRepo) DeleteSearchResultsCache(ctx context.Context, keywords []string) error {
+	kws := kw.FormatKeywords(keywords)
+	return r.rdb.Del(ctx, SearchResultsKeyPrefix+kws).Err()
+}
+
+func (r *VideoCacheRepo) GetHotSearchKeywords(ctx context.Context, limit int) ([]string, error) {
+	key := SearchKeywordsKeyPrefix + time.Now().Format("2006-01-02")
+	result, err := r.rdb.ZRevRangeWithScores(ctx, key, 0, int64(limit-1)).Result()
+	if err != nil {
+		return nil, err
+	}
+	var keywords []string
+	for _, item := range result {
+		keywords = append(keywords, item.Member.(string))
+	}
+	return keywords, nil
+}
+
 func (r *VideoCacheRepo) GetVideoLikeCount(ctx context.Context, videoID int64) (int64, error) {
 	key := VideoLikeCountKeyPrefix + strconv.FormatInt(videoID, 10)
 	countStr, err := r.rdb.Get(ctx, key).Result()
@@ -150,7 +212,6 @@ func (r *VideoCacheRepo) IncreaseVideoVisitCount(ctx context.Context, videoID in
 	return r.rdb.Incr(ctx, key).Err()
 }
 
-// 删除视频用得到
 func (r *VideoCacheRepo) DeleteVideoVisitCount(ctx context.Context, videoID int64) error {
 	key := VideoVisitCountKeyPrefix + strconv.FormatInt(videoID, 10)
 	return r.rdb.Del(ctx, key).Err()
