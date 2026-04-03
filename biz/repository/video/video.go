@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	model "w2-work4/biz/model/db"
+	kws "w2-work4/internal/utils/keywords"
 
 	"github.com/go-redis/redis/v8"
 
@@ -102,6 +103,14 @@ func NewVideoCacheRepo(rdb *redis.Client) *VideoCacheRepo {
 	return &VideoCacheRepo{rdb: rdb}
 }
 
+func (r *VideoCacheRepo) GetVideosByKeywords(ctx context.Context, keywords []string) ([]int64, error) {
+	kw := kws.FormatKeywords(keywords)
+	ids, err := r.rdb.SMembers(ctx, "keyword:"+kw).Result()
+	if err != nil {
+		return nil, err
+	}
+	var videoIDs []int64
+}
 func (r *VideoCacheRepo) GetVideoLikeCount(ctx context.Context, videoID int64) (int64, error) {
 	key := VideoLikeCountKeyPrefix + strconv.FormatInt(videoID, 10)
 	countStr, err := r.rdb.Get(ctx, key).Result()
@@ -114,12 +123,12 @@ func (r *VideoCacheRepo) GetVideoLikeCount(ctx context.Context, videoID int64) (
 	return strconv.ParseInt(countStr, 10, 64)
 }
 
-func (r *VideoCacheRepo) IncrementVideoLikeCount(ctx context.Context, videoID int64) error {
+func (r *VideoCacheRepo) IncreaseVideoLikeCount(ctx context.Context, videoID int64) error {
 	key := VideoLikeCountKeyPrefix + strconv.FormatInt(videoID, 10)
 	return r.rdb.Incr(ctx, key).Err()
 }
 
-func (r *VideoCacheRepo) DecrementVideoLikeCount(ctx context.Context, videoID int64) error {
+func (r *VideoCacheRepo) DecreaseVideoLikeCount(ctx context.Context, videoID int64) error {
 	key := VideoLikeCountKeyPrefix + strconv.FormatInt(videoID, 10)
 	return r.rdb.Decr(ctx, key).Err()
 }
@@ -136,7 +145,7 @@ func (r *VideoCacheRepo) GetVideoVisitCount(ctx context.Context, videoID int64) 
 	return strconv.ParseInt(countStr, 10, 64)
 }
 
-func (r *VideoCacheRepo) IncrementVideoVisitCount(ctx context.Context, videoID int64) error {
+func (r *VideoCacheRepo) IncreaseVideoVisitCount(ctx context.Context, videoID int64) error {
 	key := VideoVisitCountKeyPrefix + strconv.FormatInt(videoID, 10)
 	return r.rdb.Incr(ctx, key).Err()
 }
