@@ -6,18 +6,17 @@ import (
 )
 
 func FormatKeywords(keywords []string) string {
-	formatted := make([]string, len(keywords))
+	formatted := make([]string, 0, len(keywords))
 	existing := make(map[string]struct{})
-	for i, kw := range keywords {
+	for _, kw := range keywords {
 		kw = strings.ToLower(kw)
 		kw = strings.TrimSpace(kw)
 		if kw == "" {
 			continue
 		}
 		if _, ok := existing[kw]; !ok { //去重
-			formatted[i] = kw
-			existing[kw] = struct{}{}
 			formatted = append(formatted, kw)
+			existing[kw] = struct{}{}
 		}
 	}
 	sort.Strings(formatted)

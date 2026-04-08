@@ -2,20 +2,17 @@ package video
 
 import (
 	"context"
-	"strconv"
 
 	model "w2-work4/biz/model/db"
 	video "w2-work4/biz/repository/video"
-
-	"github.com/go-redis/redis/v8"
 )
 
 type VideoSvc struct {
 	videoRepo *video.VideoRepo
-	rdb       *redis.Client
-} //
+	rdb       *video.VideoCacheRepo
+}
 
-func NewVideoSvc(videorepo *video.VideoRepo, rdb *redis.Client) *VideoSvc {
+func NewVideoSvc(videorepo *video.VideoRepo, rdb *video.VideoCacheRepo) *VideoSvc {
 	return &VideoSvc{videoRepo: videorepo, rdb: rdb}
 }
 
@@ -30,70 +27,45 @@ func (s *VideoSvc) UploadVideo(ctx context.Context, userID int64, videoURL, cove
 	return s.videoRepo.AddVideo(ctx, video)
 }
 
-func (s *VideoSvc) GetVideoByID(ctx context.Context, id int64) (*model.Video, error) {
+func (s *VideoSvc) GetVideo(ctx context.Context, id int64) (*model.Video, error) {
 	return s.videoRepo.GetVideoByID(ctx, id)
 }
 
-func (s *VideoSvc) GetVideosByIDs(ctx context.Context, ids []int64) ([]*model.Video, error) {
+func (s *VideoSvc) GetVideos(ctx context.Context, ids []int64) ([]*model.Video, error) {
 	return s.videoRepo.GetVideosByIDs(ctx, ids)
 }
 
-func (s *VideoSvc) GetVideosByUserID(ctx context.Context, userID int64) ([]*model.Video, error) {
-	return s.videoRepo.GetVideosByUserID(ctx, userID)
+func (s *VideoSvc) GetVideosByUserID(ctx context.Context, userID int64, page, pagesize int) ([]*model.Video, error) {
+	return s.videoRepo.GetVideosByUserID(ctx, userID, page, pagesize)
 }
 
-func (s *VideoSvc) GetHotVideos(ctx context.Context, limit int) ([]*model.Video, error) {
-	hotVideoIDs, err := s.rdb.ZRevRange(ctx, "hot_videos", 0, int64(limit-1)).Result()
+func (s *VideoSvc) GetHotVideos(ctx context.Context, Page, PageSize int) ([]*model.Video, error) {
+	ids, err := s.rdb.GetHotVideos(ctx, Page, PageSize)
 	if err != nil {
 		return nil, err
 	}
-	var hotVideos []*model.Video
-	for _, idStr := range hotVideoIDs {
-		videoID, err := strconv.ParseInt(idStr, 10, 64)
+	return s.videoRepo.GetVideosByIDs(ctx, ids)
+}
+
+func (s *VideoSvc) SearchVideos(ctx context.Context, keywords []string, Page, Pagesize int) ([]*model.Video, error) {
+	s.rdb.IncreaseSearchCount(ctx, keywords)
+	ids, err := s.rdb.GetVideoIDsByKeywords(ctx, keywords, Page, Pagesize)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		res, err := s.videoRepo.GetVideosByKeywords(ctx, keywords, Page, Pagesize)
 		if err != nil {
-			continue
+			return nil, err
 		}
-		video, err := s.GetVideoByID(ctx, videoID)
-		if err == nil {
-			hotVideos = append(hotVideos, video)
-		}
-	}
-	return hotVideos, nil
-}
-
-/*func (s *VideoSvc) GetVideosByKeywords(ctx context.Context, keywords []string) ([]*model.Video, error) {
-	if len(keywords) == 0 {
-		return []*model.Video{}, nil
-	}
-	formattedKeywords := kw.FormatKeywords(keywords)
-	cached, err := s.rdb.Get(ctx,HotVideosKey + formattedKeywords).Result()
-	if err == nil {
-		videoIDs := strings.Split(cached, "|")
-		videoIDsInt := make([]int64, 0, len(videoIDs))
-		for _, idStr := range videoIDs {
-			id, err := strconv.ParseInt(idStr, 10, 64)
-			if err == nil {
-				videoIDsInt = append(videoIDsInt, id)
+		if len(res) > 0 {
+			videoIDs := make([]int64, 0, len(res))
+			for _, video := range res {
+				videoIDs = append(videoIDs, video.ID)
 			}
+			s.rdb.CacheVideoIDsByKeywords(ctx, keywords, videoIDs)
 		}
-		var videos []*model.Video
-		videos, err1 := s.videoRepo.GetVideosByIDs(ctx, videoIDsInt)
-		if err1 == nil {
-			return videos, nil
-		}
-
-	} else if err != redis.Nil {
-		return nil, err
+		return res, nil
 	}
-	videos, err := s.videoRepo.GetVideosByKeywords(ctx, keywords)
-	if err != nil {
-		return nil, err
-	}
-	var videoIDs []string
-	for _, video := range videos {
-		videoIDs = append(videoIDs, strconv.FormatInt(video.ID, 10))
-	}
-	s.rdb.Set(ctx, HotVideosKey + formattedKeywords, strings.Join(videoIDs, "|"), 0)
-	return videos, nil
+	return s.videoRepo.GetVideosByIDs(ctx, ids)
 }
-*/
