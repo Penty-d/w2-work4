@@ -25,7 +25,7 @@ func (r *UserRepo) GetUserByID(ctx context.Context, id int64) (*model.User, erro
 	if err != nil {
 		return nil, err
 	}
-	return &user, err
+	return &user, nil
 }
 
 func (r *UserRepo) UpdateUserAvatar(ctx context.Context, avatarurl string) error {
@@ -38,5 +38,14 @@ func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (*mod
 	if err != nil {
 		return nil, err
 	}
-	return &user, err
+	return &user, nil
+}
+
+func (r *UserRepo) GetLikeByUserID(ctx context.Context, userID int64) ([]*model.VideoLike, error) {
+	var likes []*model.VideoLike
+	err := r.db.WithContext(ctx).Model(&model.VideoLike{}).Where("user_id = ?", userID).Find(&likes).Error
+	if err != nil {
+		return nil, err
+	}
+	return likes, nil
 }

@@ -98,16 +98,20 @@ func (r *VideoRepo) GetVideosByCommentCount(ctx context.Context, limit int) ([]*
 	return videos, err
 }
 
+func (r *VideoRepo) DeleteVideoByID(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.Video{}).Error
+}
+
 type VideoCacheRepo struct {
 	rdb *redis.Client
 }
 
 const (
-	VideoLikeCountKeyPrefix  = "video_like_count:"
 	VideoVisitCountKeyPrefix = "video_visit_count:"
 	SearchResultsKeyPrefix   = "search_results:"
 	SearchKeywordsKeyPrefix  = "search_keywords:"
 	HotVideosKey             = "hot_videos"
+	VideoLikeCountKeyPrefix  = "video_like_count:"
 
 	SearchResultsTTL   = 30 * time.Minute
 	HotVideosTTL       = 10 * time.Minute
@@ -226,42 +230,12 @@ func (r *VideoCacheRepo) GetHotSearchKeywords(ctx context.Context, page, pageSiz
 	return keywords, nil
 }
 
-func (r *VideoCacheRepo) GetVideoLikeCount(ctx context.Context, videoID int64) (int64, error) {
-	key := VideoLikeCountKeyPrefix + strconv.FormatInt(videoID, 10)
-	countStr, err := r.rdb.Get(ctx, key).Result()
-	if err != nil {
-		if err == redis.Nil {
-			return 0, nil //没有缓存，默认0
-		}
-		return 0, err
-	}
-	return strconv.ParseInt(countStr, 10, 64)
-}
-
-func (r *VideoCacheRepo) IncreaseVideoLikeCount(ctx context.Context, videoID int64) error {
-	key := VideoLikeCountKeyPrefix + strconv.FormatInt(videoID, 10)
-	pipe := r.rdb.TxPipeline()
-	pipe.Incr(ctx, key)
-	pipe.Expire(ctx, key, VideoCounterKeyTTL)
-	_, err := pipe.Exec(ctx)
-	return err
-}
-
-func (r *VideoCacheRepo) DecreaseVideoLikeCount(ctx context.Context, videoID int64) error {
-	key := VideoLikeCountKeyPrefix + strconv.FormatInt(videoID, 10)
-	pipe := r.rdb.TxPipeline()
-	pipe.Decr(ctx, key)
-	pipe.Expire(ctx, key, VideoCounterKeyTTL)
-	_, err := pipe.Exec(ctx)
-	return err
-}
-
 func (r *VideoCacheRepo) GetVideoVisitCount(ctx context.Context, videoID int64) (int64, error) {
 	key := VideoVisitCountKeyPrefix + strconv.FormatInt(videoID, 10)
 	countStr, err := r.rdb.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			return 0, nil //没有缓存，默认0
+			return 0, nil
 		}
 		return 0, err
 	}
@@ -280,6 +254,18 @@ func (r *VideoCacheRepo) IncreaseVideoVisitCount(ctx context.Context, videoID in
 func (r *VideoCacheRepo) DeleteVideoVisitCount(ctx context.Context, videoID int64) error {
 	key := VideoVisitCountKeyPrefix + strconv.FormatInt(videoID, 10)
 	return r.rdb.Del(ctx, key).Err()
+}
+
+func (r *VideoCacheRepo) GetVideoLikeCount(ctx context.Context, videoID int64) (int64, error) {
+	key := VideoLikeCountKeyPrefix + strconv.FormatInt(videoID, 10)
+	countStr, err := r.rdb.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return 0, nil //没有缓存，默认0
+		}
+		return 0, err
+	}
+	return strconv.ParseInt(countStr, 10, 64)
 }
 
 func (r *VideoCacheRepo) DeleteVideoLikeCount(ctx context.Context, videoID int64) error {
